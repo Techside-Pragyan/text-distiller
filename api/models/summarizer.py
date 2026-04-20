@@ -1,5 +1,5 @@
 import torch
-from transformers import pipeline, AutoTokenizer, AutoModelForSeq2SeqLM
+from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 import nltk
 from nltk.tokenize import sent_tokenize
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -7,42 +7,42 @@ import numpy as np
 
 # Download necessary NLTK data
 try:
-    nltk.data.find('tokenizers/punkt')
-except LookupError:
-    nltk.download('punkt')
+    nltk.download('punkt', quiet=True)
+    nltk.download('punkt_tab', quiet=True)
+except Exception as e:
+    print(f"NLTK download failed: {e}")
 
 class Summarizer:
     def __init__(self):
-        self.device = 0 if torch.cuda.is_available() else -1
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.abstractive_model_name = "facebook/bart-large-cnn"
-        self.abstractive_pipeline = None
+        self.tokenizer = None
+        self.model = None
         
     def _load_abstractive_model(self):
-        if self.abstractive_pipeline is None:
+        if self.model is None:
             print(f"Loading abstractive model: {self.abstractive_model_name}")
-            self.abstractive_pipeline = pipeline(
-                "summarization", 
-                model=self.abstractive_model_name, 
-                device=self.device
-            )
+            self.tokenizer = AutoTokenizer.from_tokenizer(self.abstractive_model_name) if hasattr(AutoTokenizer, "from_tokenizer") else AutoTokenizer.from_pretrained(self.abstractive_model_name)
+            self.model = AutoModelForSeq2SeqLM.from_pretrained(self.abstractive_model_name).to(self.device)
             print("Model loaded successfully.")
 
     def summarize_abstractive(self, text, max_length=150, min_length=50):
         self._load_abstractive_model()
         
-        # Handle long text by chunking
-        # Bart has a max position embedding of 1024
         chunks = self._chunk_text(text)
         summaries = []
         
         for chunk in chunks:
-            summary = self.abstractive_pipeline(
-                chunk, 
+            inputs = self.tokenizer([chunk], max_length=1024, return_tensors="pt", truncation=True).to(self.device)
+            summary_ids = self.model.generate(
+                inputs["input_ids"], 
+                num_beams=4, 
                 max_length=max_length, 
                 min_length=min_length, 
-                do_sample=False
+                early_stopping=True
             )
-            summaries.append(summary[0]['summary_text'])
+            summary = self.tokenizer.decode(summary_ids[0], skip_special_tokens=True)
+            summaries.append(summary)
             
         return " ".join(summaries)
 
@@ -52,8 +52,11 @@ class Summarizer:
             return text
             
         vectorizer = TfidfVectorizer(stop_words='english')
-        tfidf_matrix = vectorizer.fit_transform(sentences)
-        
+        try:
+            tfidf_matrix = vectorizer.fit_transform(sentences)
+        except ValueError:
+            return text
+            
         # Calculate sentence scores based on TF-IDF
         sentence_scores = np.array(tfidf_matrix.sum(axis=1)).flatten()
         
@@ -66,7 +69,12 @@ class Summarizer:
         return " ".join(summary)
 
     def _chunk_text(self, text, max_chunk_len=800):
-        sentences = sent_tokenize(text)
+        try:
+            sentences = sent_tokenize(text)
+        except Exception:
+            # Fallback if sent_tokenize fails
+            return [text[i:i+max_chunk_len] for i in range(0, len(text), max_chunk_len)]
+            
         chunks = []
         current_chunk = ""
         
@@ -80,7 +88,7 @@ class Summarizer:
         if current_chunk:
             chunks.append(current_chunk.strip())
             
-        return chunks
+        return [c for c in chunks if c.strip()]
 
 # Singleton instance
 summarizer_instance = Summarizer()
