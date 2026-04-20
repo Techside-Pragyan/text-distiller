@@ -65,6 +65,7 @@ export default function Home() {
       </Head>
 
       <section className="hero-section">
+        <div className="hero-bg" style={{ backgroundImage: 'url("/hero.png")', backgroundSize: 'cover' }}></div>
         <h1 className="gradient-text" style={{ fontSize: '3.5rem', marginBottom: '1rem' }}>Text Distiller</h1>
         <p style={{ color: 'var(--text-secondary)', fontSize: '1.2rem' }}>
           Distill complex documents into clear, concise insights using advanced neural networks.
