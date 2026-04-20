@@ -1,0 +1,15 @@
+fastapi
+uvicorn
+transformers
+torch
+pypdf
+python-docx
+newspaper3k
+textstat
+keybert
+python-multipart
+nltk
+spacy
+scikit-learn
+pandas
+vaderSentiment
